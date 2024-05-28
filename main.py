@@ -359,7 +359,7 @@ def convert_to_json(sorted_nodes_text, file_source):
 
 
 def launch_cohere(sorted_nodes_text, query):
-    # co = cohere.Client('AfR2LZg8hnuAaCxDsbhIK6lgwhEQ8VErlZEJeClI') # dev key
+    # co = cohere.Client('') # dev key
     co = cohere.Client('')  # prod key
 
     # initial value
