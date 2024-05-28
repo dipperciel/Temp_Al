@@ -278,13 +278,16 @@ def clean_up(nodes_text, sections):
     nodes_text[0] = temp_text
 
     #Combine "Tutorials" and "Faculty Members Information" for better results
+    tutorials_index = 0
+    fac_memberss_index = 0
     for i in range(len(nodes_text)):
         if nodes_text[i].find("*Tutorials*") > -1:
             tutorials_index = i
         if nodes_text[i].find("*Faculty Members Information*") > -1:
             fac_memberss_index = i
-    nodes_text[tutorials_index] = nodes_text[tutorials_index] + nodes_text[fac_memberss_index]
-    del nodes_text[fac_memberss_index]
+    if tutorials_index != 0 and fac_memberss_index != 0:
+        nodes_text[tutorials_index] = nodes_text[tutorials_index] + nodes_text[fac_memberss_index]
+        del nodes_text[fac_memberss_index]
 
     # Erase empty nodes
     filtered_nodes_text = [text for text in nodes_text if not (text.endswith("*\n\n") or text.endswith("*\n \n"))]
@@ -357,7 +360,7 @@ def convert_to_json(sorted_nodes_text, file_source):
 
 def launch_cohere(sorted_nodes_text, query):
     # co = cohere.Client('AfR2LZg8hnuAaCxDsbhIK6lgwhEQ8VErlZEJeClI') # dev key
-    co = cohere.Client('SLeMoTFCFp3BVf1FwaTp89dWf4bkl1vrweXM1IXk')  # prod key
+    co = cohere.Client('')  # prod key
 
     # initial value
     docs = sorted_nodes_text
