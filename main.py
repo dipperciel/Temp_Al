@@ -22,7 +22,7 @@ load_dotenv()  # load .env file
 
 # INPUT variables------------------------------------------------------------------------------------------- #
 # json_file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/syllabus.json"
-file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx"
+file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Questions.docx"
 doc = Document(file_source)
 test_queries = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Queries_Temporal.xlsx" # contains the test queries, either Queries_Questions.xlsx or Test_Questions.xlsx or Queries_Syllabus.xlsx
 testing_results = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Testing_Results.xlsx" # output file containing the testing results
@@ -376,7 +376,6 @@ def launch_cohere(sorted_nodes_text, query):
         top_n=3,
     )
 
-    # print(response)
     results = str(response)
     pos_index1 = results.find("index=")
     pos_index2 = results.find(",", pos_index1)
@@ -384,9 +383,6 @@ def launch_cohere(sorted_nodes_text, query):
     pos_index1 = results.find("relevance_score=")
     pos_index2 = results.find(")", pos_index1)
     relevance_score = float(results[pos_index1 + 16:pos_index2:])
-
-    # print("index: ",  index)
-    # print("relevance_score: ", relevance_score)
     prompt_context = sorted_nodes_text[int(index)]
 
     return relevance_score, prompt_context, index
@@ -399,7 +395,6 @@ def launch_chat_completion(query, prompt_context):
         azure_endpoint="https://aca-dev.openai.azure.com"
     )
     deployment_name = 'fakesmarts-dev'
-    # print('Sending a test completion job')
     start_phrase = construct_prompt(query, prompt_context)
     response = client.chat.completions.create(
         model=deployment_name,
@@ -415,17 +410,12 @@ def launch_chat_completion(query, prompt_context):
     completion_response = response.dict()["choices"][0]["message"]["content"]
     return completion_response
 
-# print("Answer: ", completion_response)
-# print("index: ",  index)
-# print("relevance_score: ", relevance_score)
-
 
 def find_dates_in_nodes(lines, date_today): # get the node with the dates and identify the line before today and the line after today's date
     i = 0
     date_dic = {}
     # create a dictionary with the line index and the date (which converted into a date object for calculations)
     for line in lines:
-        print(i,": ", line)
         match = re.search(r"[A-S][a-v]{2} \d{1,2}, 20\d{2}", line)  # matches dates that look like "Nov 4, 2023"
         if match:
             line_idx = i
@@ -447,11 +437,10 @@ def find_dates_in_nodes(lines, date_today): # get the node with the dates and id
     return date_after, date_before
 
 
-def add_temporal_relation(query): # this function adds temporal relations to the prompt in construct_prompt
+def add_temporal_relation(query, sorted_nodes_text): # this function adds temporal relations to the prompt in construct_prompt
     # date_today = datetime.today().strftime('%b %d, %Y')
     date_today = datetime.strptime("Nov 21, 2023", "%b %d, %Y") # for testing purposes
     temporal_relation = ""
-
     # find the node for the Summary of Evaluation table and the node for the Schedule and Readings table
     i = 0
     for sorted_node in sorted_nodes_text:
@@ -533,9 +522,6 @@ def add_temporal_relation(query): # this function adds temporal relations to the
                 temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and today's topic presented in class" + lines[int(date_before-1)][10:] + "\n" + lines[int(date_before)]
             else:
                 temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and there is no class today"
-    print("date_after: ", date_after)
-    print("date_before: ", date_before)
-    print("temporal_relation': ", temporal_relation)
     return temporal_relation
 
 def construct_prompt(query, prompt_context):
@@ -544,11 +530,10 @@ def construct_prompt(query, prompt_context):
     separator = "\n\n=====\n\n"
     # context = prompt_context # actual node provided by Cohere
     if file_source == "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx":
-        temporal_relation = add_temporal_relation(query)
+        temporal_relation = add_temporal_relation(query, sorted_nodes_text)
     else:
         temporal_relation = ""
     prompt = system_prompt + separator + header + separator + "Context:\n" + prompt_context + "\n\n" + temporal_relation + separator + "Question: " + query + " " + "\n\nAnswer:"
-    # print('prompt: ', prompt)
     return prompt
 
 
@@ -595,7 +580,6 @@ render_tables_add_to_nodes_text(table_titles, nodes_text, doc_tables_df) # Where
 sorted_nodes_text = clean_up(nodes_text, sections)  # final touches to clean up the list
 
 json_data = convert_to_json(sorted_nodes_text, file_source)
-# print(json_data)
 
 # This part let's you chose whether to run the program in auto or manual mode
 run_mode = "manual"  # "auto" or "manual". Auto is for auto testing all questions and manual is for individual queries
@@ -623,24 +607,30 @@ if run_mode == "auto":  # start the automatic testing
     question_bank.to_excel(testing_results, sheet_name='Sheet1', index=False, engine='openpyxl')
 
 else:
-    query =  "What assignment do we have next?"
+    query = "What assignment do we have next?"
     query = pre_process_query(query, html_text)
-    print(query)
+
     relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text, query) # get the prompt context for the chat complettion
     completion_response = launch_chat_completion(query, prompt_context)  # this is where the chat completion happens
-    print(index)
-    print(relevance_score)
-    print(prompt_context)
-    print("Answer: ", completion_response)
+    # print("First index: ", index)
+    # print("First relevance_score: ", relevance_score)
+    print("First query:", query)
+    # print("First prompt_context:", prompt_context)
+    print("First Answer: ", completion_response)
 
     # Some cleaning up of the answer
     # if "does not directly address the question" in completion_response:
     #    completion_response = "That is something I can't answer"
 
     # If the response is "I don't know" from the Questions document, then use Syllabus
-    if "I don't know" in completion_response or "does not provide information" in completion_response:
+    if "I don't know" in completion_response or "does not provide information" in completion_response or relevance_score < 0.01:
         file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx"
         doc = Document(file_source)
+
+        with open(file_source, "rb") as docx_file:
+            result = mammoth.convert_to_html(docx_file)  # this converts my doc to html
+            html_text = result.value
+
         sections = find_hlevel(doc)
         section_paragraphs = find_sections_paragraphs(sections, doc)
         nodes_text = convert_doc_to_nodes(section_paragraphs, doc)
@@ -649,12 +639,13 @@ else:
         sorted_nodes_text = clean_up(nodes_text, sections)
         json_data = convert_to_json(sorted_nodes_text, file_source)
 
-        print(query)
         relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text, query)
-        print(relevance_score)
-        print(prompt_context)
         completion_response = launch_chat_completion(query, prompt_context)
-        print("Answer: ", completion_response)
+        # print("Second index: ", index)
+        # print("Second relevance_score: ", relevance_score)
+        print("Second query:", query)
+        # print("Second prompt_context", prompt_context)
+        print("Second Answer: ", completion_response)
 
 # -------------------------------------------------------------------------------------------#
 # Different models for Open
