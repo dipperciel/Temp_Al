@@ -8,17 +8,21 @@ import pandas as pd
 import mammoth  # to convert docx to html
 from io import StringIO
 import re  # regular expression
-import json  # to convert a list go json
+import json  # to conver a list go json
 from bs4 import BeautifulSoup # install beautifulsoup4
 import cohere  # to use Cohere, which chooses the best node (from the sorted_nodes_text) for the prompt context
 from openai import AzureOpenAI  # to use Azure OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam  # to do the chat completions
 import openpyxl  # to import excel file containing test questions
 from datetime import datetime # to find the string dates in the nodes and convert them to date objects
+from dotenv import load_dotenv # install python-dotenv. This is to read .env file containing api keys
+import os
+
+load_dotenv()  # load .env file
 
 # INPUT variables------------------------------------------------------------------------------------------- #
 # json_file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/syllabus.json"
-file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Questions.docx"
+file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx"
 doc = Document(file_source)
 test_queries = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Queries_Temporal.xlsx" # contains the test queries, either Queries_Questions.xlsx or Test_Questions.xlsx or Queries_Syllabus.xlsx
 testing_results = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Testing_Results.xlsx" # output file containing the testing results
@@ -359,8 +363,8 @@ def convert_to_json(sorted_nodes_text, file_source):
 
 
 def launch_cohere(sorted_nodes_text, query):
-    # co = cohere.Client('') # dev key
-    co = cohere.Client('')  # prod key
+
+    co = cohere.Client(os.getenv('COHERE_PRODKEY'))  # prod key in env.env
 
     # initial value
     docs = sorted_nodes_text
@@ -390,7 +394,7 @@ def launch_cohere(sorted_nodes_text, query):
 
 def launch_chat_completion(query, prompt_context):
     client = AzureOpenAI(
-        api_key="a2d6d7e9786f441dbd80942bc9848e7c",
+        api_key=os.getenv('OPENAI_API_KEY'),
         api_version="2023-05-15",
         azure_endpoint="https://aca-dev.openai.azure.com"
     )
@@ -408,7 +412,6 @@ def launch_chat_completion(query, prompt_context):
         max_tokens=1024,
         temperature=1.0
     )
-    # print(query)
     completion_response = response.dict()["choices"][0]["message"]["content"]
     return completion_response
 
@@ -530,19 +533,22 @@ def add_temporal_relation(query): # this function adds temporal relations to the
                 temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and today's topic presented in class" + lines[int(date_before-1)][10:] + "\n" + lines[int(date_before)]
             else:
                 temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and there is no class today"
+    print("date_after: ", date_after)
+    print("date_before: ", date_before)
+    print("temporal_relation': ", temporal_relation)
     return temporal_relation
 
 def construct_prompt(query, prompt_context):
     system_prompt = "You are a helpful assistant for this course, " + course_number + " ('" + course_title + "'), at York University."
-    header = "Answer the question as truthfully as possible using the provided context. If the answer is not contained within the text below, say \"I don't know.\" If a URL link is in the context, always include it in the response."
+    header = "Answer the question as truthfully as possible using the provided context. If the answer is not contained within the text below, say \"I don't know.\". If a URL link is in the context, always include it in the response."
     separator = "\n\n=====\n\n"
-    context = prompt_context # actual node provided by Cohere
-
-    temporal_relation = add_temporal_relation(query)
-    # print("temporal_relation: ", temporal_relation)
-
+    # context = prompt_context # actual node provided by Cohere
+    if file_source == "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx":
+        temporal_relation = add_temporal_relation(query)
+    else:
+        temporal_relation = ""
     prompt = system_prompt + separator + header + separator + "Context:\n" + prompt_context + "\n\n" + temporal_relation + separator + "Question: " + query + " " + "\n\nAnswer:"
-    print('prompt: ', prompt)
+    # print('prompt: ', prompt)
     return prompt
 
 
@@ -617,20 +623,22 @@ if run_mode == "auto":  # start the automatic testing
     question_bank.to_excel(testing_results, sheet_name='Sheet1', index=False, engine='openpyxl')
 
 else:
-    query =  "What assignment did we have previously?"
+    query =  "What assignment do we have next?"
     query = pre_process_query(query, html_text)
     print(query)
     relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text, query) # get the prompt context for the chat complettion
     completion_response = launch_chat_completion(query, prompt_context)  # this is where the chat completion happens
     print(index)
+    print(relevance_score)
+    print(prompt_context)
     print("Answer: ", completion_response)
 
     # Some cleaning up of the answer
-    if "does not directly address the question" in completion_response:
-        completion_response = "That is something I can't answer"
+    # if "does not directly address the question" in completion_response:
+    #    completion_response = "That is something I can't answer"
 
-    # If the responsse is "I don't know" from the Questions document, then use Syllabus
-    if "I don't know" in completion_response:
+    # If the response is "I don't know" from the Questions document, then use Syllabus
+    if "I don't know" in completion_response or "does not provide information" in completion_response:
         file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx"
         doc = Document(file_source)
         sections = find_hlevel(doc)
@@ -643,6 +651,7 @@ else:
 
         print(query)
         relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text, query)
+        print(relevance_score)
         print(prompt_context)
         completion_response = launch_chat_completion(query, prompt_context)
         print("Answer: ", completion_response)
