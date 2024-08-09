@@ -8,27 +8,29 @@ import pandas as pd
 import mammoth  # to convert docx to html
 from io import StringIO
 import re  # regular expression
-import json  # to conver a list go json
-from bs4 import BeautifulSoup # install beautifulsoup4
+import json  # to convert a list to json
+from bs4 import BeautifulSoup  # install beautifulsoup4
 import cohere  # to use Cohere, which chooses the best node (from the sorted_nodes_text) for the prompt context
 from openai import AzureOpenAI  # to use Azure OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam  # to do the chat completions
 import openpyxl  # to import excel file containing test questions
-from datetime import datetime # to find the string dates in the nodes and convert them to date objects
-from dotenv import load_dotenv # install python-dotenv. This is to read .env file containing api keys
+from datetime import datetime  # to find the string dates in the nodes and convert them to date objects
+from dotenv import load_dotenv  # install python-dotenv. This is to read .env file containing api keys. Must load python-dotenv
 import os
 
 load_dotenv()  # load .env file
 
 # INPUT variables------------------------------------------------------------------------------------------- #
 # json_file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/syllabus.json"
-file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Questions.docx"
+# file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus6.docx"
+file_source = "C:/Users/donal/OneDrive - York University/New/Roots of Modern Canada/0. General/_FW 2024-2025/Syllabus HUMA 1740 FW (2024-2025).docx"
 doc = Document(file_source)
-test_queries = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Queries_Temporal.xlsx" # contains the test queries, either Queries_Questions.xlsx or Test_Questions.xlsx or Queries_Syllabus.xlsx
-testing_results = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Testing_Results.xlsx" # output file containing the testing results
+test_queries = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Queries_Temporal.xlsx"  # contains the test queries, either Queries_Questions.xlsx or Test_Questions.xlsx or Queries_Syllabus.xlsx
+testing_results = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Testing_Results.xlsx"  # output file containing the testing results
 
 # Initial set-up
-question_bank = data = pd.read_excel(test_queries, sheet_name='Sheet1')  # grab Excel sheet with questions and create data frame
+question_bank = data = pd.read_excel(test_queries,
+                                     sheet_name='Sheet1')  # grab Excel sheet with questions and create data frame
 
 with open(file_source, "rb") as docx_file:
     result = mammoth.convert_to_html(docx_file)  # this converts my doc to html
@@ -37,6 +39,7 @@ with open(file_source, "rb") as docx_file:
 # Put the course title and rubric/number in variables for further use
 course_number = doc.paragraphs[0].text.strip()
 course_title = doc.paragraphs[1].text.strip()
+
 
 # Functions -------------------------------------------------------------------------------------------------- #
 
@@ -47,42 +50,50 @@ def find_hlevel(doc):
         if paragraph.style.name.startswith('Heading'):
             headings.append(paragraph.text.strip())
     # Erase empty headers
-    sections = [item for item in headings if item]  # iterating item through headings, if item is true (i.e. not empty) add item in the list
+    sections = [item for item in headings if
+                item]  # iterating item through headings, if item is true (i.e. not empty) add item in the list
     return sections
 
-def find_sections_paragraphs(sections,doc):  # finds the paragraph of the sections defined in the list sections
+
+def find_sections_paragraphs(sections, doc):  # finds the paragraph of the sections defined in the list sections
     section_paragraphs = []
     for i in range(len(sections)):
         for j in range(len(doc.paragraphs)):
-            if sections[i] == doc.paragraphs[j].text.strip(): # if the section in the list is the same as the doc paragraph, add the paragraph number to section_paragraph list
+            if sections[i] == doc.paragraphs[
+                j].text.strip():  # if the section in the list is the same as the doc paragraph, add the paragraph number to section_paragraph list
                 section_paragraphs.append(j)
     return section_paragraphs
 
 
-def convert_doc_to_nodes(section_paragraphs,doc):
+def convert_doc_to_nodes(section_paragraphs, doc):
     nodes_text = []
     nodes_temp = ""
-    for i in range(len(section_paragraphs)-1):
-        for j in range(section_paragraphs[i]+1, section_paragraphs[i+1]):
+    for i in range(len(section_paragraphs) - 1):
+        for j in range(section_paragraphs[i] + 1, section_paragraphs[i + 1]):
             # first check if there's a hyperlink in the paragraph
             hyperlink_text, hyperlink_url = include_hyperlink(doc.paragraphs[j])
-            for k in range(len(hyperlink_text)): # loop to grab all items in hyperlink_text[] and hyperlink_url[]
+            for k in range(len(hyperlink_text)):  # loop to grab all items in hyperlink_text[] and hyperlink_url[]
                 if len(hyperlink_text) > 0:  # if there's no item in hypertext_link or hypertext_url, you get an error message
-                    temp_text = doc.paragraphs[j].text.replace(hyperlink_text[k], "["+ hyperlink_text[k] + "](" + hyperlink_url[k] + ")") # follows the mark down format
+                    temp_text = doc.paragraphs[j].text.replace(hyperlink_text[k],
+                                                               "[" + hyperlink_text[k] + "](" + hyperlink_url[
+                                                                   k] + ")")  # follows the mark down format
                     doc.paragraphs[j].text = temp_text
             nodes_temp = nodes_temp + doc.paragraphs[j].text.strip() + " "
         nodes_text.append("*" + sections[i] + "*\n" + nodes_temp + "\n")
         nodes_temp = ""
     # need to add the following code to capture the paragraphs in the last section, which are not captured in the loop because the loop would be out of range
-    for i in range(section_paragraphs[len(section_paragraphs)-1], len(doc.paragraphs)):  # from the last section position to the last paragraph of the document
-        if i == section_paragraphs[len(section_paragraphs)-1]:
+    for i in range(section_paragraphs[len(section_paragraphs) - 1],
+                   len(doc.paragraphs)):  # from the last section position to the last paragraph of the document
+        if i == section_paragraphs[len(section_paragraphs) - 1]:
             nodes_temp = nodes_temp + "*" + doc.paragraphs[i].text.strip() + "*\n"
         else:
             # first check if there's a hyperlink in the paragraph
             hyperlink_text, hyperlink_url = include_hyperlink(doc.paragraphs[i])
             for k in range(len(hyperlink_text)):  # loop to grab all items in hyperlink_text[] and hyperlink_url[]
                 if len(hyperlink_text) > 0:  # if there's no item in hypertext_link or hypertext_url, you get an error message
-                    temp_text = doc.paragraphs[i].text.replace(hyperlink_text[k], "[" + hyperlink_text[k] + "](" + hyperlink_url[k] + ")")  # follows the mark down format
+                    temp_text = doc.paragraphs[i].text.replace(hyperlink_text[k],
+                                                               "[" + hyperlink_text[k] + "](" + hyperlink_url[
+                                                                   k] + ")")  # follows the mark down format
                     doc.paragraphs[i].text = temp_text
             nodes_temp = nodes_temp + doc.paragraphs[i].text.strip()
     nodes_text.append(nodes_temp)
@@ -114,7 +125,8 @@ def read_tables_bs4mp(html_text):
 
             # Extract text and links
             cols_text = [col.get_text() for col in cols]
-            cols_links = [col.find('a')['href'] if col.find('a') and 'href' in col.find('a').attrs else '' for col in cols]
+            cols_links = [col.find('a')['href'] if col.find('a') and 'href' in col.find('a').attrs else '' for col in
+                          cols]
 
             # Combine text and links
             cols_with_links = [f'[{text}] ({link})' if link else text for text, link in zip(cols_text, cols_links)]
@@ -127,6 +139,7 @@ def read_tables_bs4mp(html_text):
         data_frames.append(df)
 
     return data_frames
+
 
 def read_tables(html_text):
     # With the following two code lines, pd.read_html did not keep the links. So I used beautiful soup instead
@@ -145,17 +158,18 @@ def read_tables(html_text):
     #         table_titles.append(matches[i][4:])
 
     # find name of table, which is the heading above it (h1, h2 or h3
-    longest_section_len = len(max(sections, key=len)) # first determine the length of the longest section
+    longest_section_len = len(max(sections, key=len))  # first determine the length of the longest section
     pattern_close = r"</h\d>\s*<table>"  # Finds all h1 or h2 or h3 followed by a table
     closing_indexes = [m.start() for m in re.finditer(pattern_close, html_text)]  # Finds the closing index of the table
 
-    previous_index = [] # this goes back to the index at a distance of the longest section
+    previous_index = []  # this goes back to the index at a distance of the longest section
     for closing_index in closing_indexes:
         previous_index.append(closing_index - longest_section_len)
     chunks = []  # chunks contain the titles but addtional crap beforehand
-    for i in range(len(closing_indexes)):
-        chunks.append(html_text[previous_index[i]:closing_indexes[i]+12])
 
+    for i in range(len(closing_indexes)):
+        chunks.append(html_text[previous_index[i]:closing_indexes[i] + 12])
+    print("***chunks: ", chunks)
     almost_titles = []  # an almost title still needs to be cleaned further to get the title
     for item in chunks:
         match = re.search(r"<h\d>.*</h", item)
@@ -164,13 +178,14 @@ def read_tables(html_text):
     # Clean the almost titles to have real titles
     table_titles = []
     for i in range(len(almost_titles)):  # Removes the initial tag and the ending tag
-            table_titles.append(almost_titles[i][4:-3])
+        table_titles.append(almost_titles[i][4:-3])
 
-    for i in range(len(table_titles)):  # this part is to find occurrence of another heading in the title (one that should be eliminated)
+    for i in range(
+            len(table_titles)):  # this part is to find occurrence of another heading in the title (one that should be eliminated)
         if "</h" in table_titles[i]:
             temp_index = table_titles[i].find("</h") + 9
             table_titles[i] = table_titles[i][temp_index:]
-
+    print("table_titles: ", table_titles)
     return doc_tables_df, table_titles
 
 
@@ -178,7 +193,9 @@ def render_tables_add_to_nodes_text(table_titles, nodes_text, doc_table_df):
     i = 0
     temp_text = ""
     for title in table_titles:
+        # print("***title: ", len(table_titles))
         temp_df = (doc_tables_df[i])
+        # print("***doc_tables_df[i]: ", i, ": ", doc_tables_df[i])
 
         if title == "Tutorials":
             temp_text = "*Tutorials*\n "
@@ -189,16 +206,26 @@ def render_tables_add_to_nodes_text(table_titles, nodes_text, doc_table_df):
                                      "'if you are in Tutorial 1, your TA is...; if you are in Tutorial 2, your TA is...; "
                                      "if you are in Tutorial 3, your TA is...'. \n ")
             for j in range(1, len(temp_df)):
-                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[j, 0] + ", your TA (or teaching assistant or tutor or responsible instructor who teaches the tutorial) is " + temp_df.iloc[j, 1] + ".\n "
-                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[j, 0] + ", your tutorial time is " + temp_df.iloc[j, 2] + ".\n "
-                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[j, 0] + ", your tutorial room is " + temp_df.iloc[j, 3] + ".\n "
-                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[j, 0] + ", your Zoom address (or Zoom link) during online sessions is " + temp_df.iloc[j, 4] + ".\n"
+                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[
+                    j, 0] + ", your TA (or teaching assistant or tutor or responsible instructor who teaches the tutorial) is " + \
+                            temp_df.iloc[j, 1] + ".\n "
+                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[j, 0] + ", your tutorial time is " + \
+                            temp_df.iloc[j, 2] + ".\n "
+                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[j, 0] + ", your tutorial room is " + \
+                            temp_df.iloc[j, 3] + ".\n "
+                temp_text = temp_text + "If you are in Tutorial " + temp_df.iloc[
+                    j, 0] + ", your Zoom address (or Zoom link) during online sessions is " + temp_df.iloc[j, 4] + " .\n"
             nodes_text.append(temp_text)
 
         elif title == "Faculty Members Information":
             temp_text = "*Faculty Members Information*\n "
             for j in range(1, len(temp_df)):
-                temp_text = temp_text + temp_df.iloc[j, 0] + " is the course's " + temp_df.iloc[j, 1] + " and has the following email address: " + temp_df.iloc[j, 2] + " and has the following office hours (time you can meet or appointment time): " + temp_df.iloc[j, 3] + "and has the following office address or location (where you can meet with your professor or instructor or teacher or TA): " + temp_df.iloc[j, 4] + ".\n "
+                temp_text = temp_text + temp_df.iloc[j, 0] + " is the course's " + temp_df.iloc[
+                    j, 1] + " and has the following email address: " + temp_df.iloc[
+                                j, 2] + " and has the following office hours (time you can meet or appointment time): " + \
+                            temp_df.iloc[
+                                j, 3] + " and has the following office address or location (where you can meet with your professor or instructor or teacher or TA): " + \
+                            temp_df.iloc[j, 4] + ".\n "
             nodes_text.append(temp_text)
 
         elif title == "Summary of Evaluation":
@@ -206,26 +233,35 @@ def render_tables_add_to_nodes_text(table_titles, nodes_text, doc_table_df):
             temp_text = temp_text + "This section answers questions about how much an assignment is worth (how much it counts toward the final grade) and when the assignments are due or have to be submitted or handed in (submission date). \n"
             # evaluation_table_index = i  # this is to be able to find the evaluation table when we do the query precoessing for temporal relations
             for j in range(1, len(temp_df)):
-                temp_text = temp_text + "The " + temp_df.iloc[j, 0] + " is worth " + temp_df.iloc[j, 1] + " of the final grade. In other words, it counts for " + temp_df.iloc[j, 1] + " of the final grade.\n "
-                temp_text = temp_text + "The " + temp_df.iloc[j, 0] + " is due on " + temp_df.iloc[j, 2] + ". In other words, the deadline or due date or submission date for " + temp_df.iloc[j, 0] + " is " + temp_df.iloc[j, 2] + ".\n "
+                temp_text = temp_text + "The " + temp_df.iloc[j, 0] + " is worth " + temp_df.iloc[
+                    j, 1] + " of the final grade. In other words, it counts for " + temp_df.iloc[
+                                j, 1] + " of the final grade.\n "
+                temp_text = temp_text + "The " + temp_df.iloc[j, 0] + " is due on " + temp_df.iloc[
+                    j, 2] + ". In other words, the deadline or due date or submission date for " + temp_df.iloc[
+                                j, 0] + " is " + temp_df.iloc[j, 2] + ".\n "
             nodes_text.append(temp_text)
 
         elif title == "Grading Equivalence":
             temp_text = "*Grading Equivalence*\n "
             for j in range(1, len(temp_df)):
-                temp_text = temp_text + temp_df.iloc[j, 0] + " is the same as a grade point of " + temp_df.iloc[j, 1] + ", which falls in the percent range of " + temp_df.iloc[j, 2] + "%, and is described as '" + temp_df.iloc[j, 3] + "'.\n "
+                temp_text = temp_text + temp_df.iloc[j, 0] + " is the same as a grade point of " + temp_df.iloc[
+                    j, 1] + ", which falls in the percent range of " + temp_df.iloc[j, 2] + "%, and is described as '" + \
+                            temp_df.iloc[j, 3] + "'.\n "
             nodes_text.append(temp_text)
 
         elif title == "Definitions of Standing":
             temp_text = "*Definitions of Standing*\n "
             for j in range(0, len(temp_df)):
-                temp_text = temp_text + "A grade considered '" + temp_df.iloc[j, 0] + "' means that you have a " + temp_df.iloc[j, 1] + "\n "
+                temp_text = temp_text + "A grade considered '" + temp_df.iloc[j, 0] + "' means that you have a " + \
+                            temp_df.iloc[j, 1] + "\n "
             nodes_text.append(temp_text)
 
         elif title == "Schedule and Readings":
             temp_text = "*Schedule and Readings*\n "
             for j in range(1, len(temp_df)):
-                temp_text = temp_text + "The topic on " + temp_df.iloc[j, 2] + " is (or is about) '" + temp_df.iloc[j, 0] + "'. In other words, '" + temp_df.iloc[j, 0] + "' is presented in class on " + temp_df.iloc[j, 2] + ".\n "
+                temp_text = temp_text + "The topic on " + temp_df.iloc[j, 2] + " is (or is about) '" + temp_df.iloc[
+                    j, 0] + "'. In other words, '" + temp_df.iloc[j, 0] + "' is presented in class on " + temp_df.iloc[
+                                j, 2] + ".\n "
                 if str(temp_df.iloc[j, 1]) == "nan":
                     temp_text = temp_text + "There are no readings on " + temp_df.iloc[j, 2] + ".\n "
                 else:
@@ -247,41 +283,49 @@ def render_tables_add_to_nodes_text(table_titles, nodes_text, doc_table_df):
             nb_rows = len(temp_df)
             nb_columns = len(temp_df.columns)
             for j in range(1, nb_rows):
-                temp_text = temp_text + "The following " + temp_df.iloc[0, 0].lower() + ": " + temp_df.iloc[j, 0] + " has "
+                temp_text = temp_text + "The following " + temp_df.iloc[0, 0].lower() + ": " + temp_df.iloc[
+                    j, 0] + " has "
                 for k in range(1, nb_columns - 1):
-                    temp_text = temp_text + "the following " + temp_df.iloc[0, k].lower() + ": " + str(temp_df.iloc[j,k]) + " and has "
-                temp_text = temp_text + "the following " + temp_df.iloc[0, k+1].lower() + ": " + str(temp_df.iloc[j, k+1]).strip() + "."
+                    temp_text = temp_text + "the following " + temp_df.iloc[0, k].lower() + ": " + str(
+                        temp_df.iloc[j, k]) + " and has "
+                temp_text = temp_text + "the following " + temp_df.iloc[0, k + 1].lower() + ": " + str(
+                    temp_df.iloc[j, k + 1]).strip() + "."
             nodes_text.append(temp_text)
         i = i + 1
-
     return nodes_text
 
 
 def clean_up(nodes_text, sections):
-
     # Render the section Course Information
-    temp_text = nodes_text[0].replace("Course Director:", "The course director (or professor or instructor or teacher) for this course is ")
+    temp_text = nodes_text[0].replace("Course Director:",
+                                      "The course director (or professor or instructor or teacher) for this course is ")
     nodes_text[0] = temp_text
     temp_text = nodes_text[0].replace("Email:", "\n Your course director's email is ")
     nodes_text[0] = temp_text
     temp_text = nodes_text[0].replace("Semester:", "\n The current semester (or term) is ")
     nodes_text[0] = temp_text
-    temp_text = nodes_text[0].replace("Lecture time & day:", "\n The lecture (or class) is offered on the following day and time: ")
+    temp_text = nodes_text[0].replace("Lecture time & day:",
+                                      "\n The lecture (or class) is offered on the following day and time: ")
     nodes_text[0] = temp_text
-    temp_text = nodes_text[0].replace("Lecture room:", "\n If you're wondering how to get to your lecture, the lecture (or class) takes place in the following classroom (or location): ")
+    temp_text = nodes_text[0].replace("Lecture room:",
+                                      "\n If you're wondering how to get to your lecture, the lecture (or class) takes place in the following classroom (or location): ")
     nodes_text[0] = temp_text
-    temp_text = nodes_text[0].replace("Zoom (Lecture):", "\n Some classes may be offered on Zoom or you may have to attend some classes on Zoom only during unforseen situaitons such as snowstorms or the instructor's illness, in which case the Zoom link (or Zoom address) for the lecture will be ")
+    temp_text = nodes_text[0].replace("Zoom (Lecture):",
+                                      "\n Some classes may be offered on Zoom or you may have to attend some classes on Zoom only during unforeseen situations such as snowstorms or the instructor's illness, in which case the Zoom link (or Zoom address) for the lecture will be ")
     nodes_text[0] = temp_text
-    temp_text = nodes_text[0].replace("eClass:", "\n There is an eClass site (the course has been uploaded to eClass) and the eClass link (or address or URL) is ")
+    temp_text = nodes_text[0].replace("eClass:",
+                                      "\n There is an eClass site (the course has been uploaded to eClass) and the eClass link (or address or URL) is ")
     nodes_text[0] = temp_text
-    temp_text = nodes_text[0].replace("Office:", "\n What is the course director's (or professor's or instructor's or teacher's) office number (or office address)? Where can I meet him or her? The answer is: ")
+    temp_text = nodes_text[0].replace("Office:",
+                                      "\n What is the course director's (or professor's or instructor's or teacher's) office number (or office address)? Where can I meet him or her? The answer is: ")
     nodes_text[0] = temp_text
-    temp_text = nodes_text[0].replace("Office Hours:", "\n The course director's (or professor's or instructor's or teacher's) office hours are ")
+    temp_text = nodes_text[0].replace("Office Hours:",
+                                      "\n The course director's (or professor's or instructor's or teacher's) office hours are ")
     nodes_text[0] = temp_text
     temp_text = nodes_text[0].replace("\t", "")
     nodes_text[0] = temp_text
 
-    #Combine "Tutorials" and "Faculty Members Information" for better results
+    # Combine "Tutorials" and "Faculty Members Information" for better results
     tutorials_index = 0
     fac_memberss_index = 0
     for i in range(len(nodes_text)):
@@ -299,13 +343,14 @@ def clean_up(nodes_text, sections):
 
     # Combine two nodes when there is a table and text under the same header
     sorted_nodes_text = sorted(nodes_text)  # If you sort the list, like item will be next to each other
-    for i in range(len(nodes_text)-2, -1, -1):
+    for i in range(len(nodes_text) - 2, -1, -1):
         first_index = sorted_nodes_text[i].find("*")
         second_index = sorted_nodes_text[i].find("*", first_index + 1)  # Starts searching after the first *
         temp_node = sorted_nodes_text[i][:second_index]  # you now have the title of the node
-        if temp_node == sorted_nodes_text[i+1][:second_index]:
-            sorted_nodes_text[i] = sorted_nodes_text[i] + sorted_nodes_text[i+1][second_index+1:]  # Combine the following item with the previous
-            del sorted_nodes_text[i+1]  # And delete the following, now redundant
+        if temp_node == sorted_nodes_text[i + 1][:second_index]:
+            sorted_nodes_text[i] = sorted_nodes_text[i] + sorted_nodes_text[i + 1][
+                                                          second_index + 1:]  # Combine the following item with the previous
+            del sorted_nodes_text[i + 1]  # And delete the following, now redundant
 
     # From here on (i.e. after clean_up), we must work with sort_nodes_text instead of nodes_text
 
@@ -325,7 +370,8 @@ def clean_up(nodes_text, sections):
     return sorted_nodes_text
 
 
-def include_hyperlink(paragraph):  # This function looks for hyperlinks in a paragraph. If found, returns the list of text that has a link and the list of its url
+def include_hyperlink(
+        paragraph):  # This function looks for hyperlinks in a paragraph. If found, returns the list of text that has a link and the list of its url
     # has_hyperlink = False
     hyperlink_text = []
     hyperlink_url = []
@@ -339,7 +385,6 @@ def include_hyperlink(paragraph):  # This function looks for hyperlinks in a par
 
 
 def convert_to_json(sorted_nodes_text, file_source):
-
     # First remove path from file_source
     filename = file_source.split("/")[-1]
     node_number = 0
@@ -352,19 +397,19 @@ def convert_to_json(sorted_nodes_text, file_source):
             "metadata": {
                 "category_depth": 0,
                 "filename": filename,
-                "page_number": 1,          # not sure what to do with the page number here
+                "page_number": 1,  # not sure what to do with the page number here
                 "languages": ["eng"],
                 "filetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             }
         }
         json_nodes_text.append(node)  # json.dumps converts the list to a JSON string
         node_number = node_number + 1
-    return json.dumps(json_nodes_text, indent=4)  # json.dumps converts the list to a JSON string - Add indentation for readability
+    return json.dumps(json_nodes_text,
+                      indent=4)  # json.dumps converts the list to a JSON string - Add indentation for readability
 
 
 def launch_cohere(sorted_nodes_text, query):
-
-    co = cohere.Client(os.getenv('COHERE_PRODKEY'))  # prod key in env.env
+    co = cohere.Client(os.getenv('COHERE_DEV'))  # prod key in env.env
 
     # initial value
     docs = sorted_nodes_text
@@ -391,10 +436,10 @@ def launch_cohere(sorted_nodes_text, query):
 def launch_chat_completion(query, prompt_context):
     client = AzureOpenAI(
         api_key=os.getenv('OPENAI_API_KEY'),
-        api_version="2023-05-15",
-        azure_endpoint="https://aca-dev.openai.azure.com"
+        api_version="2024-02-01",
+        azure_endpoint="https://cria-dev-useast.openai.azure.com"
     )
-    deployment_name = 'fakesmarts-dev'
+    deployment_name = 'cria-gpt-4o-mini'
     start_phrase = construct_prompt(query, prompt_context)
     response = client.chat.completions.create(
         model=deployment_name,
@@ -404,14 +449,15 @@ def launch_chat_completion(query, prompt_context):
                 role='user'
             )
         ],
-        max_tokens=1024,
+        max_tokens=4000,
         temperature=1.0
     )
     completion_response = response.dict()["choices"][0]["message"]["content"]
     return completion_response
 
 
-def find_dates_in_nodes(lines, date_today): # get the node with the dates and identify the line before today and the line after today's date
+def find_dates_in_nodes(lines,
+                        date_today):  # get the node with the dates and identify the line before today and the line after today's date
     i = 0
     date_dic = {}
     # create a dictionary with the line index and the date (which converted into a date object for calculations)
@@ -437,9 +483,10 @@ def find_dates_in_nodes(lines, date_today): # get the node with the dates and id
     return date_after, date_before
 
 
-def add_temporal_relation(query, sorted_nodes_text): # this function adds temporal relations to the prompt in construct_prompt
+def add_temporal_relation(query,
+                          sorted_nodes_text):  # this function adds temporal relations to the prompt in construct_prompt
     # date_today = datetime.today().strftime('%b %d, %Y')
-    date_today = datetime.strptime("Nov 21, 2023", "%b %d, %Y") # for testing purposes
+    date_today = datetime.strptime("Nov 21, 2023", "%b %d, %Y")  # for testing purposes
     temporal_relation = ""
     # find the node for the Summary of Evaluation table and the node for the Schedule and Readings table
     i = 0
@@ -456,26 +503,32 @@ def add_temporal_relation(query, sorted_nodes_text): # this function adds tempor
         lines = temporal_node.splitlines()  # split the node into lines
         date_after, date_before = find_dates_in_nodes(lines, date_today)
         temp_index = lines[int(date_after)].find("is due on")
-        temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the next assignment is the" + lines[int(date_after)][4:temp_index] + "and it is due on " + lines[int(date_after)][-13:]
+        temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the next assignment is the" + lines[
+                                                                                                                     int(date_after)][
+                                                                                                                 4:temp_index] + "and it is due on " + \
+                            lines[int(date_after)][-13:]
 
     elif re.search(r"assi\w{1,3}ent", query.lower()) and re.search(r"previo\w*", query.lower()):
         temporal_node = sorted_nodes_text[assignment_idx]  # Uses the node for the Summary of Evaluation table
         lines = temporal_node.splitlines()  # split the node into lines
         date_after, date_before = find_dates_in_nodes(lines, date_today)
         temp_index = lines[int(date_before)].find("is due on")
-        temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the previous assignment was the" + lines[int(date_before)][4:temp_index] + "and it was due on " + lines[int(date_before)][-13:]
+        temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the previous assignment was the" + \
+                            lines[int(date_before)][4:temp_index] + "and it was due on " + lines[int(date_before)][-13:]
 
     elif re.search(r"assi\w{1,3}ent", query.lower()) and ("first" in query.lower() or "fisrt" in query.lower()):
         temporal_node = sorted_nodes_text[assignment_idx]  # Uses the node for the Summary of Evaluation table
         lines = temporal_node.splitlines()  # split the node into lines
         temp_index = lines[5].find("is due on")
-        temporal_relation = "The first assignment is the" + lines[5][4:temp_index] + "and is due on " + lines[5][-13:] + "\n"
+        temporal_relation = "The first assignment is the" + lines[5][4:temp_index] + "and is due on " + lines[5][
+                                                                                                        -13:] + "\n"
 
     elif re.search(r"assi\w{1,3}ent", query.lower()) and ("last" in query.lower() or "lasst" in query.lower()):
         temporal_node = sorted_nodes_text[assignment_idx]  # Uses the node for the Summary of Evaluation table
         lines = temporal_node.splitlines()  # split the node into lines
         temp_index = lines[-2].find("is due on")
-        temporal_relation = "The last assignment is the" + lines[-2][4:temp_index] + "and is due on" + lines[-2][-13:] + "\n"
+        temporal_relation = "The last assignment is the" + lines[-2][4:temp_index] + "and is due on" + lines[-2][
+                                                                                                       -13:] + "\n"
 
     elif re.search(r"assi\w{1,3}ent", query.lower()) and ("today" in query.lower() or "tody" in query.lower()):
         temporal_node = sorted_nodes_text[assignment_idx]  # Uses the node for the Summary of Evaluation table
@@ -484,24 +537,30 @@ def add_temporal_relation(query, sorted_nodes_text): # this function adds tempor
         date_in_line = lines[int(date_before)][-13:-1].strip()
         if datetime.strptime(date_in_line, "%b %d, %Y") == date_today:
             temp_index = lines[int(date_before)].find("is due on")
-            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and today's assignment is the" + lines[int(date_before)][4:temp_index]
+            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and today's assignment is the" + \
+                                lines[int(date_before)][4:temp_index]
         else:
-            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and there are no assignments due today"
+            temporal_relation = "Today is " + date_today.strftime(
+                "%b %d, %Y") + " and there are no assignments due today"
 
     # If the query is about class content (i.e. the word "assignment" is not in Query)------- #
 
     else:
         if "next" in query.lower() or "upcoming" in query.lower():
-            temporal_node = sorted_nodes_text[lecture_idx] # Uses the node for the Schedule and Readings table
+            temporal_node = sorted_nodes_text[lecture_idx]  # Uses the node for the Schedule and Readings table
             lines = temporal_node.splitlines()  # split the node into lines
             date_after, date_before = find_dates_in_nodes(lines, date_today)
-            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the next topic in class" + lines[int(date_after)][10:] + "\n" + lines[int(date_after + 1)]
+            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the next topic in class" + lines[
+                                                                                                                      int(date_after)][
+                                                                                                                  10:] + "\n" + \
+                                lines[int(date_after + 1)]
 
         elif re.search(r"previo\w*", query.lower()):
             temporal_node = sorted_nodes_text[lecture_idx]  # Uses the node for the Schedule and Readings table
             lines = temporal_node.splitlines()  # split the node into lines
             date_after, date_before = find_dates_in_nodes(lines, date_today)
-            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the previous topic in class" + lines[int(date_before-1)][10:] + "\n" + lines[int(date_before)]
+            temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and the previous topic in class" + \
+                                lines[int(date_before - 1)][10:] + "\n" + lines[int(date_before)]
 
         elif "first" in query.lower():
             temporal_node = sorted_nodes_text[lecture_idx]  # Uses the node for the Schedule and Readings table
@@ -517,12 +576,15 @@ def add_temporal_relation(query, sorted_nodes_text): # this function adds tempor
             temporal_node = sorted_nodes_text[lecture_idx]  # Uses the node for the Schedule and Readings table
             lines = temporal_node.splitlines()  # split the node into lines
             date_after, date_before = find_dates_in_nodes(lines, date_today)
-            date_in_line = lines[int(date_before-1)][-13:-1].strip()
+            date_in_line = lines[int(date_before - 1)][-13:-1].strip()
             if datetime.strptime(date_in_line, "%b %d, %Y") == date_today:
-                temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and today's topic presented in class" + lines[int(date_before-1)][10:] + "\n" + lines[int(date_before)]
+                temporal_relation = "Today is " + date_today.strftime(
+                    "%b %d, %Y") + " and today's topic presented in class" + lines[int(date_before - 1)][10:] + "\n" + \
+                                    lines[int(date_before)]
             else:
                 temporal_relation = "Today is " + date_today.strftime("%b %d, %Y") + " and there is no class today"
     return temporal_relation
+
 
 def construct_prompt(query, prompt_context):
     system_prompt = "You are a helpful assistant for this course, " + course_number + " ('" + course_title + "'), at York University."
@@ -538,13 +600,13 @@ def construct_prompt(query, prompt_context):
 
 
 def get_test_questions(test_queries):
-    question_bank = pd.read_excel(test_queries, sheet_name='Sheet1')  # grab Excel sheet with questions and create data frame
+    question_bank = pd.read_excel(test_queries,
+                                  sheet_name='Sheet1')  # grab Excel sheet with questions and create data frame
     test_queries = question_bank['Queries'].tolist()
     return test_queries
 
 
 def pre_process_query(query, html_text):
-
     # If the query includes the course number or title, it always selects the Course Information, which is not helpful.
     query = query.replace(course_number, "this course")
     query = query.replace(course_title, "this course")
@@ -555,7 +617,8 @@ def pre_process_query(query, html_text):
         query = query.replace("I dont know", "I would like to know")
 
     # add a question mark if the query doesn't end in a question mark and starts with a question word
-    question_start = ["what", "how", "why", "when", "who", "whom", "whose", "which", "where", "does", "is", "are", "can", "could", "will", "would", "should", "may", "might", "have", "must"]
+    question_start = ["what", "how", "why", "when", "who", "whom", "whose", "which", "where", "does", "is", "are",
+                      "can", "could", "will", "would", "should", "may", "might", "have", "must"]
     if query[len(query) - 1] != "?":
         if query.split()[0].lower() in question_start:
             query = query.rstrip() + "?"
@@ -567,20 +630,26 @@ def pre_process_query(query, html_text):
     # print("doc_tables_df: ", doc_tables_df[evaluation_table_index])
     return query
 
+
 # -------------------------------------------------------------------------------------------------------------#
 # Main program ----------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------------------#
 
 sections = find_hlevel(doc)
-section_paragraphs = find_sections_paragraphs(sections, doc)  # the sections in the sections list are assigned a paragraph
-nodes_text = convert_doc_to_nodes(section_paragraphs, doc)  # the doc is converted to a list of semantic sections containing the text
-doc_tables_df, table_titles = read_tables(html_text)# I need the dataframe created in read_table to use in render_tables_add_to_notes, where the dataframe is rendered
+section_paragraphs = find_sections_paragraphs(sections,
+                                              doc)  # the sections in the sections list are assigned a paragraph
+nodes_text = convert_doc_to_nodes(section_paragraphs,
+                                  doc)  # the doc is converted to a list of semantic sections containing the text
+doc_tables_df, table_titles = read_tables(
+    html_text)  # I need the dataframe created in read_table to use in render_tables_add_to_notes, where the dataframe is rendered
 # read_tables_temp(html_text)
-render_tables_add_to_nodes_text(table_titles, nodes_text, doc_tables_df) # Where the rendering of tables is done and added to the list nodes_text
+render_tables_add_to_nodes_text(table_titles, nodes_text,
+                                doc_tables_df)  # Where the rendering of tables is done and added to the list nodes_text
 sorted_nodes_text = clean_up(nodes_text, sections)  # final touches to clean up the list
 
 json_data = convert_to_json(sorted_nodes_text, file_source)
-
+print(sorted_nodes_text)
+print(json_data)
 # This part let's you chose whether to run the program in auto or manual mode
 run_mode = "manual"  # "auto" or "manual". Auto is for auto testing all questions and manual is for individual queries
 
@@ -592,7 +661,8 @@ if run_mode == "auto":  # start the automatic testing
     for i in range(len(get_test_questions(test_queries))):  # test each question
         query = test_questions[i]
         query = pre_process_query(query, html_text)
-        relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text, query)  # get the prompt context for the chat completion
+        relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text,
+                                                               query)  # get the prompt context for the chat completion
         relevance_scores_list.append(relevance_score)
         index_list.append(index)
         completion_response = launch_chat_completion(query, prompt_context)  # this is where the chat completion happens
@@ -610,7 +680,8 @@ else:
     query = "What assignment do we have next?"
     query = pre_process_query(query, html_text)
 
-    relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text, query) # get the prompt context for the chat complettion
+    relevance_score, prompt_context, index = launch_cohere(sorted_nodes_text,
+                                                           query)  # get the prompt context for the chat complettion
     completion_response = launch_chat_completion(query, prompt_context)  # this is where the chat completion happens
     # print("First index: ", index)
     # print("First relevance_score: ", relevance_score)
@@ -624,7 +695,8 @@ else:
 
     # If the response is "I don't know" from the Questions document, then use Syllabus
     if "I don't know" in completion_response or "does not provide information" in completion_response or relevance_score < 0.01:
-        file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus3.docx"
+        #file_source = "C:/Users/donal/OneDrive - York University/New/Al/Al-E/Syllabus6.docx"
+        file_source = "C:/Users/donal/OneDrive - York University/New/Roots of Modern Canada/0. General/_FW 2024-2025/Syllabus HUMA 1740 FW (2024-2025).docx"
         doc = Document(file_source)
 
         with open(file_source, "rb") as docx_file:
