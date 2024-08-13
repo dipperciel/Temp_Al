@@ -4,3 +4,4 @@
 .venv
 /Lib
 .env
+pyvenv.cfg
