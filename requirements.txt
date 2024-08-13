@@ -1,0 +1,8 @@
+python-docx
+cohere
+mammoth
+openpyxl
+bs4
+pandas
+openai
+python-dotenv
